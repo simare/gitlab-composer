@@ -20,7 +20,7 @@ function clear_cache($projectPath)
             echo 'project composer file not found';
         }
     } else {
-        echo 'project '.print_r($_POST['project'],true)." not found";
+        echo 'project '.$projectPath." not found";
     }
 }
 
