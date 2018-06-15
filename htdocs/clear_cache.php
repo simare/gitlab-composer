@@ -1,5 +1,7 @@
 <?php
 
+require __DIR__.'/config.php';
+
 /**
  * @param $projectPath
  * @throws Exception
@@ -29,10 +31,10 @@ function clear_cache($projectPath)
  */
 function run()
 {
-    $gitlabToken = "qgtdNfbP46H4FpporVqCViRMiK";
+    $config = getConfig();;
     $headers = getallheaders();
 
-    if (strcmp($headers['X-Gitlab-Token'], $gitlabToken) === 0) {
+    if (strcmp($headers['X-Gitlab-Token'], $config['clear_cache_token']) === 0) {
         $requestBody = json_decode(file_get_contents('php://input'), true);
         $pathWithNamespace = $requestBody['project']['path_with_namespace'];
         clear_cache($pathWithNamespace);

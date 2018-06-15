@@ -1,6 +1,7 @@
 <?php
 
 require __DIR__ . '/../vendor/autoload.php';
+require __DIR__.'/config.php';
 
 use Gitlab\Client;
 use Gitlab\Exception\RuntimeException;
@@ -26,17 +27,8 @@ $outputFile = function ($file) {
     die();
 };
 
-
-
-// See ../confs/samples/gitlab.ini
-$config_file = __DIR__ . '/../confs/gitlab.ini';
-if (!file_exists($config_file)) {
-    header('HTTP/1.0 500 Internal Server Error');
-    die('confs/gitlab.ini missing');
-}
-$confs = parse_ini_file($config_file, false, INI_SCANNER_TYPED);
-
 //jwt auth
+$confs = getConfig();
 if(isset($confs['jwt_enabled']) && $confs['jwt_enabled']) {
     $headers = getallheaders();
     $token = isset($headers['Authorization']) ? $headers['Authorization'] : $_GET['token'];
