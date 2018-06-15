@@ -48,7 +48,7 @@ $groups = $client->api('groups');
 $projects = $client->api('projects');
 $repos = $client->api('repositories');
 
-$validMethods = array('ssh', 'http');
+$validMethods = array('ssh', 'https');
 if (isset($confs['method']) && in_array($confs['method'], $validMethods)) {
     define('method', $confs['method']);
 } else {
