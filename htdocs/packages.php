@@ -26,13 +26,28 @@ $outputFile = function ($file) {
     die();
 };
 
+
+
 // See ../confs/samples/gitlab.ini
 $config_file = __DIR__ . '/../confs/gitlab.ini';
 if (!file_exists($config_file)) {
     header('HTTP/1.0 500 Internal Server Error');
     die('confs/gitlab.ini missing');
 }
-$confs = parse_ini_file($config_file);
+$confs = parse_ini_file($config_file, false, INI_SCANNER_TYPED);
+
+//jwt auth
+if(isset($confs['jwt_enabled']) && $confs['jwt_enabled']) {
+    $headers = getallheaders();
+    $token = isset($headers['Authorization']) ? $headers['Authorization'] : $_GET['token'];
+    try {
+        \Firebase\JWT\JWT::decode($token, $confs['jwt_secret'], ['HS256']);
+    } catch (Exception $e) {
+      error_log($e->getMessage());
+      http_response_code(403);
+      die('Forbidden');
+    }
+}
 
 $client = Client::create($confs['endpoint']);
 $client->authenticate($confs['api_key'], Client::AUTH_URL_TOKEN);
