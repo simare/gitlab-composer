@@ -55,6 +55,8 @@ if (isset($confs['method']) && in_array($confs['method'], $validMethods)) {
     define('method', 'ssh');
 }
 
+$allow_package_name_mismatches = !empty($confs['allow_package_name_mismatch']);
+
 /**
  * Retrieves some information about a project's composer.json
  *
@@ -62,7 +64,7 @@ if (isset($confs['method']) && in_array($confs['method'], $validMethods)) {
  * @param string $ref commit id
  * @return array|false
  */
-$fetch_composer = function($project, $ref) use ($repos) {
+$fetch_composer = function($project, $ref) use ($repos, $allow_package_name_mismatches) {
     try {
         $c = $repos->getFile($project['id'], 'composer.json', $ref);
 
@@ -72,7 +74,7 @@ $fetch_composer = function($project, $ref) use ($repos) {
 
         $composer = json_decode(base64_decode($c['content']), true);
 
-        if (empty($composer['name'])) {
+        if (empty($composer['name']) || (!$allow_package_name_mismatches && strcasecmp($composer['name'], $project['path_with_namespace']) !== 0)) {
             return false; // packages must have a name and must match
         }
 
@@ -90,24 +92,33 @@ $fetch_composer = function($project, $ref) use ($repos) {
  * @return array   [$version => ['name' => $name, 'version' => $version, 'source' => [...]]]
  */
 $fetch_ref = function($project, $ref) use ($fetch_composer) {
-    if (preg_match('/^v?\d+\.\d+(\.\d+)*(\-(dev|patch|alpha|beta|RC)\d*)?$/', $ref['name'])) {
-        $version = $ref['name'];
-    } else {
-        $version = 'dev-' . $ref['name'];
+
+    static $ref_cache = [];
+
+    $ref_key = md5(serialize($project) . serialize($ref));
+
+    if (!isset($ref_cache[$ref_key])) {
+        if (preg_match('/^v?\d+\.\d+(\.\d+)*(\-(dev|patch|alpha|beta|RC)\d*)?$/', $ref['name'])) {
+            $version = $ref['name'];
+        } else {
+            $version = 'dev-' . $ref['name'];
+        }
+
+        if (($data = $fetch_composer($project, $ref['commit']['id'])) !== false) {
+            $data['version'] = $version;
+            $data['source'] = [
+                'url'       => $project[method . '_url_to_repo'],
+                'type'      => 'git',
+                'reference' => $ref['commit']['id'],
+            ];
+
+            $ref_cache[$ref_key] = [$version => $data];
+        } else {
+            $ref_cache[$ref_key] = [];
+        }
     }
 
-    if (($data = $fetch_composer($project, $ref['commit']['id'])) !== false) {
-        $data['version'] = $version;
-        $data['source'] = array(
-            'url'       => $project[method . '_url_to_repo'],
-            'type'      => 'git',
-            'reference' => $ref['commit']['id'],
-        );
-
-        return array($version => $data);
-    } else {
-        return array();
-    }
+    return $ref_cache[$ref_key];
 };
 
 /**
@@ -117,7 +128,6 @@ $fetch_ref = function($project, $ref) use ($fetch_composer) {
  */
 $fetch_refs = function($project) use ($fetch_ref, $repos) {
     $datas = array();
-
     try {
         foreach (array_merge($repos->branches($project['id']), $repos->tags($project['id'])) as $ref) {
             foreach ($fetch_ref($project, $ref) as $version => $data) {
@@ -166,6 +176,21 @@ $load_data = function($project) use ($fetch_refs) {
     }
 };
 
+/**
+ * Determine the name to use for the package.
+ *
+ * @param array $project
+ * @return string The name of the project
+ */
+$get_package_name = function($project) use ($allow_package_name_mismatches, $fetch_ref, $repos) {
+    if ($allow_package_name_mismatches) {
+        $ref = $fetch_ref($project, $repos->branch($project['id'], $project['default_branch']));
+        return reset($ref)['name'];
+    }
+
+    return $project['path_with_namespace'];
+};
+
 // Load projects
 $all_projects = array();
 $mtime = 0;
@@ -197,8 +222,8 @@ if (!empty($confs['groups'])) {
 if (!file_exists($packages_file) || filemtime($packages_file) < $mtime) {
     $packages = array();
     foreach ($all_projects as $project) {
-        if ($package = $load_data($project)) {
-            $packages[$project['path_with_namespace']] = $package;
+        if (($package = $load_data($project)) && ($package_name = $get_package_name($project))) {
+            $packages[$package_name] = $package;
         }
     }
     if ( file_exists( $static_file ) ) {
